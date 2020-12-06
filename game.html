@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang='en'>
+
+<head>
+    <meta charset='UTF-8'>
+    <title>Space invaders</title>
+    <meta charset="UTF-8">
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background-color: black;
+            overflow: hidden;
+        }
+
+        .space-container {
+            background-color: black;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: nowrap;
+        }
+
+        .cell {
+            width: 8px;
+            height: 8px;
+            /* border:darkslateblue solid 1px; */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="space" class="space-container">
+    </div>
+
+    <audio id='background_music' class='audio' style='visibility:hidden;' controls>
+        <source src="{{ url_for('static', filename='invaders_must_die.mp3') }}" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // Create space
+        var space = document.getElementById("space");
+        var row_len = Math.round(window.innerWidth / 8);
+        var column_len = Math.round(window.innerHeight / 8);
+        for (var i = 0; i < column_len; i++) {
+            var row = document.createElement("div");
+            row.setAttribute('class', 'row')
+            row.setAttribute("id", i);
+
+            for (var j = 0; j < row_len; j++) {
+                var cell = document.createElement("div");
+                cell.setAttribute('class', 'cell')
+                cell.setAttribute('style', 'background-color: black;')
+                cell.setAttribute("onclick","mouse_controler()")
+                row.appendChild(cell);
+            }
+            space.appendChild(row);
+        }
+
+        // Game global vars
+        // just put color in cell
+        function end_game() {
+            var music = document.getElementById('background_music');
+            music.pause();
+            music.cuttentTime = 0.0;
+            // window.open("https://manaleks.azurewebsites.net/gameover", "_self");
+            window.open(window.location.origin + "/gameover", "_self");
+            
+        }
+        function draw_cell(y, x, color) {
+            var draw_row = document.getElementById(y);
+            var draw_cells = draw_row.childNodes;
+            var style_before = "" + draw_cells[x].style.backgroundColor;
+            draw_cells[x].style = "background-color: " + color + ';';
+            return style_before
+        }
+
+        // Defender vars
+        var start_y = Math.round(column_len / 1.5);
+        var def_column = start_y;
+        var start_x = Math.round(row_len / 2)
+        var def_row = start_x;
+        var def_size = 2;
+        var def_color = 'white';
+        // defender inertia
+        var up_last_dir = '';
+        var left_last_dir = '';
+        var def_inertia_power_max = 20;
+        var up_def_inertia_power = 10;
+        var left_def_inertia_power = 10;
+        var def_inertia_power_min = 1;
+        var RightInertiaInterval;
+        var LeftInertiaInterval;
+        var UpInertiaInterval;
+        var DownInertiaInterval;
+
+
+        // gun vars
+        var gun_sound_numder_all = 0;
+        var gun_sound_numder = gun_sound_numder_all;
+        var gun_shots_all = 40;
+        var gun_shots = gun_shots_all;
+        var piu_speed = 1 / 10;
+        for (var sound_num = gun_sound_numder_all; sound_num < gun_shots_all; sound_num++) {
+            var gun_sound = document.createElement("audio");
+            gun_sound.setAttribute("id", "gun_attack" + sound_num);
+            var gun_sound_src = document.createElement("source");
+            gun_sound_src.setAttribute("src", "{{ url_for('static', filename='gun_attack.wav') }}");
+            gun_sound_src.setAttribute("type", "audio/wav")
+            gun_sound.appendChild(gun_sound_src);
+            gun_sound.setAttribute("preload", "auto");
+            space.appendChild(gun_sound);
+            gun_sound.load()
+        }
+        function gun_cooldown() {
+            gun_shots++;
+        }
+        function piu(y, x) {
+            if (y > 0) {
+                draw_cell(y, x, 'black');
+                cell_color_before = draw_cell(y - 1, x, 'red');
+                if (cell_color_before == 'black') {
+                    setTimeout(function () { piu(y - 1, x); }, piu_speed);
+                }
+            }
+            else {
+                draw_cell(y, x, 'black');
+            }
+        }
+        function piu_down(y, x) {
+            if (y < column_len - 1) {
+                draw_cell(y, x, 'black');
+                cell_color_before = draw_cell(y + 1, x, 'red');
+                if (cell_color_before == 'black') {
+                    setTimeout(function () { piu_down(y + 1, x); }, piu_speed);
+                }
+                if (cell_color_before == 'white') {
+                    end_game();
+                }
+            }
+            else {
+                draw_cell(y, x, 'black');
+            }
+        }
+
+        // invaders
+        var invader1 = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+            [0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0],
+            [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+            [0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+            [0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+            [0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        ]
+
+
+        function set_invader(y, x, color, invader_conf) {
+            for (var i = 0; i < invader_conf.length; i++) {
+                for (var j = 0; j < invader_conf[0].length; j++) {
+                    if (invader_conf[i][j] == 1) {
+                        before_color = draw_cell(y + i, x + j, color);
+                        if (before_color == 'red') {
+                            return before_color
+                        }
+                    }
+                    else {
+                        draw_cell(y + i, x + j, 'black');
+                    }
+                }
+            }
+            return ''
+        }
+
+        function move_invader(y, x, color, invader_conf, cells_count, aggression, speed) {
+            if (y < cells_count) {
+                color_before = set_invader(y + 1, x, color, invader_conf);
+                if (color_before == 'red') {
+                    set_invader(y + 1, x, 'black', invader_conf);
+                }
+                else {
+                    setTimeout(function () { move_invader(y + 1, x, color, invader_conf, cells_count, aggression, speed); }, speed);
+                    if (y % aggression == 0.0) {
+                        piu_down(y + invader_conf.length, x + Math.round(invader_conf[0].length / 2 - 0.5));
+                    }
+                }
+            }
+            else {
+                set_invader(y, x, 'black', invader_conf);
+                
+            }
+        }
+
+        setInterval(function () { move_invader(0, Math.floor(Math.random() * row_len - invader1[0].length), 'blue', invader1, column_len - invader1.length, 15, 50); }, 1000);
+
+
+        // this fucntion set defender in space
+        function set_defender(y, x, set_def_size, set_def_color) {
+            // if in space
+            if (y >= start_y && y < column_len && x >= 0 + set_def_size && x < row_len - set_def_size) {
+
+                // clear space
+                var enter_row = document.getElementById(def_column);
+                var cells = enter_row.childNodes;
+                for (var k = 0; k < cells.length; k++) {
+                    if (k >= def_row - def_size && k <= def_row + def_size) {
+                        cells[k].style = 'background-color: ' + 'black';
+                    }
+                }
+
+                // set defender
+                var enter_row = document.getElementById(y);
+                var cells = enter_row.childNodes;
+                for (var k = 0; k < cells.length; k++) {
+                    if (k >= x - set_def_size && k <= x + set_def_size) {
+                        if (cells[k].style.backgroundColor == 'blue') {
+                            end_game();
+                        }
+                        cells[k].style = 'background-color: ' + set_def_color;
+                    }
+                }
+                // save new defender place
+                def_column = y;
+                def_row = x;
+                def_size = set_def_size;
+            }
+        }
+        set_defender(def_column, def_row, def_size, def_color);
+
+        function mouse_controler() {
+            // gun attack
+            if (gun_shots > 0) {
+                // play sound
+                if (gun_sound_numder == gun_shots_all) {
+                    gun_sound_numder = gun_sound_numder_all;
+                }
+                var gun_sound = document.getElementById("gun_attack" + gun_sound_numder);
+                gun_sound.play();
+
+                // make visualisation
+                piu(def_column - 1, def_row);
+
+                // count shots
+                gun_shots--;
+                setTimeout(gun_cooldown, 3000);
+                gun_sound_numder++;
+            }
+        }
+
+        // keyboard control
+        document.body.onkeydown = document.body.onkeypress = keyboard_controler;
+        function keyboard_controler(event) {
+            if (event.type = 'keydown') {
+                // gun attack
+                if (event.key == ' ') {
+                    if (gun_shots > 0) {
+                        // play sound
+                        if (gun_sound_numder == gun_shots_all) {
+                            gun_sound_numder = gun_sound_numder_all;
+                        }
+                        var gun_sound = document.getElementById("gun_attack" + gun_sound_numder);
+                        gun_sound.play();
+
+                        // make visualisation
+                        piu(def_column - 1, def_row);
+
+                        // count shots
+                        gun_shots--;
+                        setTimeout(gun_cooldown, 3000);
+                        gun_sound_numder++;
+                    }
+                }
+                // play music
+                if (event.key == 'q') {
+                    var music = document.getElementById('background_music');
+                    music.play();
+                }
+                // end || stop music
+                if (event.key == 'Escape') {
+                    var music = document.getElementById('background_music');
+                    music.pause();
+                    music.cuttentTime = 0.0;
+                }
+
+                if (event.key == 'w' || event.key == 'ArrowUp') {
+                    set_defender(def_column - 1, def_row, def_size, def_color);
+                    clearInterval(UpInertiaInterval);
+                    // inertia diff
+                    if (up_last_dir == 'w' && up_def_inertia_power < def_inertia_power_min) {
+                        up_def_inertia_power = def_inertia_power_max - 1;
+                    }
+                    else {
+                        up_def_inertia_power = def_inertia_power_max;
+                    }
+                    UpInertiaInterval = setInterval(function () { set_defender(def_column - 1, def_row, def_size, def_color); }, up_def_inertia_power);
+                    up_last_dir = 'w';
+                }
+                if (event.key == 'd' || event.key == 'ArrowRight') {
+                    set_defender(def_column, def_row + 1, def_size, def_color);
+                    clearInterval(LeftInertiaInterval);
+                    if (left_last_dir == 'd' && left_def_inertia_power < def_inertia_power_min) {
+                        left_def_inertia_power = def_inertia_power_max - 1;
+                    }
+                    else {
+                        left_def_inertia_power = def_inertia_power_max;
+                    }
+                    LeftInertiaInterval = setInterval(function () { set_defender(def_column, def_row + 1, def_size, def_color); }, left_def_inertia_power);
+                    left_last_dir = 'a';
+                }
+                if (event.key == 's' || event.key == 'ArrowDown') {
+                    set_defender(def_column + 1, def_row, def_size, def_color);
+                    clearInterval(UpInertiaInterval);
+                    if (up_last_dir == 's' && up_def_inertia_power < def_inertia_power_min) {
+                        up_def_inertia_power = up_def_inertia_power - 1;
+                    }
+                    else {
+                        up_def_inertia_power = def_inertia_power_max;
+                    }
+                    UpInertiaInterval = setInterval(function () { set_defender(def_column + 1, def_row, def_size, def_color); }, up_def_inertia_power);
+                    up_last_dir = 's';
+                }
+                if (event.key == 'a' || event.key == 'ArrowLeft') {
+                    set_defender(def_column, def_row - 1, def_size, def_color);
+                    clearInterval(LeftInertiaInterval);
+                    if (left_last_dir == 'a' && left_def_inertia_power < def_inertia_power_min) {
+                        left_def_inertia_power = left_def_inertia_power - 1;
+                    }
+                    else {
+                        left_def_inertia_power = def_inertia_power_max;
+                    }
+                    LeftInertiaInterval = setInterval(function () { set_defender(def_column, def_row - 1, def_size, def_color); }, left_def_inertia_power);
+                    left_last_dir = 'a';
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
